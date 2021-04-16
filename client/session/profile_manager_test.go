@@ -53,10 +53,9 @@ func TestProfileManager(t *testing.T) {
 		g.Describe("Current", func() {
 			g.Describe("no profiles exist", func() {
 				g.It("returns nil", func() {
-					profile, err := manager.Current()
+					profile := manager.Current()
 
 					Expect(profile).To(BeNil())
-					Expect(err).To(BeNil())
 				})
 			})
 		})
@@ -74,9 +73,8 @@ func TestProfileManager(t *testing.T) {
 
 				manager.Create(testProfile)
 
-				currentProfile, err := manager.Current()
+				currentProfile := manager.Current()
 
-				Expect(err).To(BeNil())
 				Expect(currentProfile.Alias).To(Equal(testProfile.Alias))
 			})
 
@@ -240,11 +238,12 @@ func TestProfileManager(t *testing.T) {
 				Expect(testProfile.Alias).To(Equal(profileAlias))
 			})
 
-			g.It("returns error if profile file does not exist", func() {
+			g.It("returns nil if profile does not exist", func() {
 				profileAlias := "non-existent"
-				_, err := manager.Get(profileAlias)
+				profile, err := manager.Get(profileAlias)
 
-				Expect(err).Should(MatchError(fmt.Sprintf("a profile named '%s' could not be found", profileAlias)))
+				Expect(err).Should(BeNil())
+				Expect(profile).Should(BeNil())
 			})
 
 			g.It("returns error if profile alias is empty", func() {
@@ -261,7 +260,7 @@ func TestProfileManager(t *testing.T) {
 
 				manager.Select("profile1")
 
-				currentProfile, _ := manager.Current()
+				currentProfile := manager.Current()
 				Expect(currentProfile.Alias).To(Equal("profile1"))
 			})
 
@@ -280,8 +279,9 @@ func TestProfileManager(t *testing.T) {
 
 				manager.Delete("profile1")
 
-				_, err := os.Stat(manager.ProfilePath("profile1"))
-				Expect(os.IsNotExist(err)).To(BeTrue())
+				profile, err := manager.Get("profile1")
+				Expect(err).To(BeNil())
+				Expect(profile).To(BeNil())
 			})
 
 			g.It("returns error if profile does not exist", func() {
@@ -301,8 +301,8 @@ func TestProfileManager(t *testing.T) {
 
 				manager.Delete("profile1")
 
-				_, err := os.Lstat(manager.CurrentPath)
-				Expect(os.IsNotExist(err)).To(BeTrue())
+				current := manager.Current()
+				Expect(current).To(BeNil())
 			})
 
 			g.It("does not unset profile if it is not the current profile", func() {
@@ -311,16 +311,16 @@ func TestProfileManager(t *testing.T) {
 
 				manager.Delete("profile1")
 
-				_, err := os.Lstat(manager.CurrentPath)
-				Expect(err).To(BeNil())
+				current := manager.Current()
+				Expect(current).NotTo(BeNil())
+				Expect(current.Alias).To(Equal("profile2"))
 			})
 		})
 
 		g.Describe("GetAll", func() {
 			g.It("returns empty when no profiles exist", func() {
-				profiles, err := manager.GetAll()
+				profiles := manager.GetAll()
 
-				Expect(err).To(BeNil())
 				Expect(profiles).To(BeEmpty())
 			})
 
@@ -329,7 +329,7 @@ func TestProfileManager(t *testing.T) {
 				manager.Create(createValidProfile("profile-2"))
 				manager.Create(createValidProfile("profile-3"))
 
-				profiles, _ := manager.GetAll()
+				profiles := manager.GetAll()
 
 				// Sort the slice to guarantee the order when comparing the results
 				sort.SliceStable(profiles, func(i int, j int) bool {
