@@ -15,6 +15,7 @@ func TestDetectOperationKind(t *testing.T) {
 		{"mutation { deleteStack(id: \"x\") { id } }", operationKindMutation},
 		{"subscription { runs { id } }", operationKindSubscription},
 		{"stacks { id name }", operationKindSelectionSet},
+		{"mutation2Stack { id }", operationKindSelectionSet},
 		{"  # leading comment\nmutation { deleteStack(id: \"x\") { id } }", operationKindMutation},
 		{"fragment StackFields on Stack { id }", operationKindUnknown},
 	}
@@ -57,6 +58,12 @@ func TestNormalizeDocument(t *testing.T) {
 			allowMutation: true,
 			want:          "mutation { stackDelete(id: \"x\") { id } }",
 			wantErr:       nil,
+		},
+		{
+			name:    "field names containing keyword prefixes stay query shorthand",
+			in:      "mutation2Stack { id }",
+			want:    "query { mutation2Stack { id } }",
+			wantErr: nil,
 		},
 		{
 			name:          "full mutation syntax",
@@ -146,25 +153,6 @@ func TestGraphqlErrors(t *testing.T) {
 	}
 	if msg := graphqlErrors([]byte(`{"errors":[{"message":"a"},{"message":"b"}]}`)); msg != "a; b" {
 		t.Errorf("got %q", msg)
-	}
-}
-
-func TestIsMutation(t *testing.T) {
-	tests := []struct {
-		in   string
-		want bool
-	}{
-		{"mutation { deleteStack(id: \"x\") { id } }", true},
-		{"  Mutation { foo }", true},
-		{"  # leading comment\nMutation { foo }", true},
-		{"query { stacks { id } }", false},
-		{"{ viewer { id } }", false},
-		{"stacks { id }", false},
-	}
-	for _, tc := range tests {
-		if got := isMutation(tc.in); got != tc.want {
-			t.Errorf("isMutation(%q) = %v, want %v", tc.in, got, tc.want)
-		}
 	}
 }
 

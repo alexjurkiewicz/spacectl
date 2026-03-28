@@ -84,7 +84,7 @@ func run(ctx context.Context, cliCmd *cli.Command) error {
 		query = introspectionQuery
 	} else {
 		var err error
-		query, err = resolveQuery(cliCmd)
+		query, err = resolveDocument(cliCmd)
 		if err != nil {
 			return err
 		}
@@ -140,7 +140,7 @@ func run(ctx context.Context, cliCmd *cli.Command) error {
 	return nil
 }
 
-func resolveQuery(cliCmd *cli.Command) (string, error) {
+func resolveDocument(cliCmd *cli.Command) (string, error) {
 	if args := strings.TrimSpace(strings.Join(cliCmd.Args().Slice(), " ")); args != "" {
 		return args, nil
 	}
@@ -196,10 +196,6 @@ func normalizeDocument(document string, allowMutation bool) (string, error) {
 	}
 }
 
-func isMutation(query string) bool {
-	return detectOperationKind(query) == operationKindMutation
-}
-
 func detectOperationKind(document string) operationKind {
 	start := firstSignificantToken(document)
 	switch start {
@@ -242,7 +238,7 @@ func firstSignificantToken(document string) string {
 			start := i
 			for i < len(document) {
 				c := document[i]
-				if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' {
+				if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' {
 					i++
 					continue
 				}
