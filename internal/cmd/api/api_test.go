@@ -1,23 +1,127 @@
 package api
 
 import (
+	"errors"
 	"testing"
 )
 
-func TestNormalizeQuery(t *testing.T) {
+func TestDetectOperationKind(t *testing.T) {
 	tests := []struct {
-		in, want string
+		in   string
+		want operationKind
 	}{
-		{"{ viewer { id } }", "{ viewer { id } }"},
-		{"query { viewer { id } }", "query { viewer { id } }"},
-		{"mutation { deleteStack(id: \"x\") { id } }", "mutation { deleteStack(id: \"x\") { id } }"},
-		{"subscription { runs { id } }", "subscription { runs { id } }"},
-		{"stacks { id name }", "query { stacks { id name } }"},
+		{"{ viewer { id } }", operationKindQuery},
+		{"query { viewer { id } }", operationKindQuery},
+		{"mutation { deleteStack(id: \"x\") { id } }", operationKindMutation},
+		{"subscription { runs { id } }", operationKindSubscription},
+		{"stacks { id name }", operationKindSelectionSet},
+		{"mutation2Stack { id }", operationKindSelectionSet},
+		{"  # leading comment\nmutation { deleteStack(id: \"x\") { id } }", operationKindMutation},
+		{"fragment StackFields on Stack { id }", operationKindUnknown},
 	}
 	for _, tc := range tests {
-		if got := normalizeQuery(tc.in); got != tc.want {
-			t.Errorf("normalizeQuery(%q) = %q, want %q", tc.in, got, tc.want)
+		if got := detectOperationKind(tc.in); got != tc.want {
+			t.Errorf("detectOperationKind(%q) = %q, want %q", tc.in, got, tc.want)
 		}
+	}
+}
+
+func TestNormalizeDocument(t *testing.T) {
+	tests := []struct {
+		name          string
+		in            string
+		allowMutation bool
+		want          string
+		wantErr       error
+	}{
+		{
+			name:    "query shorthand braces stay unchanged",
+			in:      "{ viewer { id } }",
+			want:    "{ viewer { id } }",
+			wantErr: nil,
+		},
+		{
+			name:    "query selection set shorthand",
+			in:      "stacks { id name }",
+			want:    "query { stacks { id name } }",
+			wantErr: nil,
+		},
+		{
+			name:    "full query syntax",
+			in:      "query { viewer { id } }",
+			want:    "query { viewer { id } }",
+			wantErr: nil,
+		},
+		{
+			name:          "mutation selection set shorthand",
+			in:            "stackDelete(id: \"x\") { id }",
+			allowMutation: true,
+			want:          "mutation { stackDelete(id: \"x\") { id } }",
+			wantErr:       nil,
+		},
+		{
+			name:    "field names containing keyword prefixes stay query shorthand",
+			in:      "mutation2Stack { id }",
+			want:    "query { mutation2Stack { id } }",
+			wantErr: nil,
+		},
+		{
+			name:          "full mutation syntax",
+			in:            "mutation DeleteStack($id: ID!) { stackDelete(id: $id) { id } }",
+			allowMutation: true,
+			want:          "mutation DeleteStack($id: ID!) { stackDelete(id: $id) { id } }",
+			wantErr:       nil,
+		},
+		{
+			name:    "mutation requires flag",
+			in:      "mutation { stackDelete(id: \"x\") { id } }",
+			wantErr: errMutationFlagRequired,
+		},
+		{
+			name:          "query rejected in mutation mode",
+			in:            "query { viewer { id } }",
+			allowMutation: true,
+			wantErr:       errors.New("--mutation requires a GraphQL mutation document"),
+		},
+		{
+			name:          "query shorthand rejected in mutation mode",
+			in:            "{ viewer { id } }",
+			allowMutation: true,
+			wantErr:       errors.New("--mutation requires a GraphQL mutation document"),
+		},
+		{
+			name:    "subscriptions rejected",
+			in:      "subscription { runs { id } }",
+			wantErr: errSubscriptionsNotAllowed,
+		},
+		{
+			name:    "fragment must not be auto-wrapped",
+			in:      "fragment StackFields on Stack { id }",
+			wantErr: errors.New("could not determine GraphQL operation type; start the document with query or provide a bare query selection set"),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := normalizeDocument(tc.in, tc.allowMutation)
+			if tc.wantErr != nil {
+				if err == nil {
+					t.Fatalf("expected error %q, got nil", tc.wantErr)
+				}
+				if err.Error() != tc.wantErr.Error() {
+					t.Fatalf("got error %q, want %q", err, tc.wantErr)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if got != tc.want {
+				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -49,24 +153,6 @@ func TestGraphqlErrors(t *testing.T) {
 	}
 	if msg := graphqlErrors([]byte(`{"errors":[{"message":"a"},{"message":"b"}]}`)); msg != "a; b" {
 		t.Errorf("got %q", msg)
-	}
-}
-
-func TestIsMutation(t *testing.T) {
-	tests := []struct {
-		in   string
-		want bool
-	}{
-		{"mutation { deleteStack(id: \"x\") { id } }", true},
-		{"  Mutation { foo }", true},
-		{"query { stacks { id } }", false},
-		{"{ viewer { id } }", false},
-		{"stacks { id }", false},
-	}
-	for _, tc := range tests {
-		if got := isMutation(tc.in); got != tc.want {
-			t.Errorf("isMutation(%q) = %v, want %v", tc.in, got, tc.want)
-		}
 	}
 }
 
